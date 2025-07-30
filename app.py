@@ -10,11 +10,11 @@ import pandas as pd
 # Carrega bases de dados relevantes
 
 # 1. Favelas e Comunidades Urbanas
-fcus = gpd.read_file("Favelas e Comunidades Urbanas\poligonos_FCUs_shp\qg_2022_670_fcu_agreg.shp")
+fcus = gpd.read_file("Favelas e Comunidades Urbanas/poligonos_FCUs_shp/qg_2022_670_fcu_agreg.shp")
 fcus['fcus_geometry'] = fcus.geometry
 
 # 2. Tipologia Intraurbana
-tipologia = gpd.read_file('Tipologia Intraurbana\TipologiaIntraUrbana.shp')
+tipologia = gpd.read_file('Tipologia Intraurbana/TipologiaIntraUrbana.shp')
 tipologia['tipologia_geometry'] = tipologia.geometry
 
 def dms_to_point(dms):
