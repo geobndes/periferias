@@ -47,8 +47,9 @@ def cria_df_com_nome_latlon(nome_do_ponto, latitude, longitude):
     gdf_bndes_periferias = gdf_bndes_periferias.set_crs('epsg:4674')
     return gdf_bndes_periferias
 
-def cria_df_com_csv_latlon(csv_file):
-    gdf_bndes_periferias = pd.read_csv(csv_file)
+def cria_df_com_csv_latlon(csv_file, tem_header):
+    header_option = 'infer' if tem_header else None
+    gdf_bndes_periferias = pd.read_csv(csv_file, header=header_option)
     gdf_bndes_periferias.columns = ['nome', 'latitude', 'longitude']
     gdf_bndes_periferias = gpd.GeoDataFrame(gdf_bndes_periferias)
     gdf_bndes_periferias['points_geometry'] = gdf_bndes_periferias.apply(lambda row: Point(row['longitude'], row['latitude']), axis=1)
@@ -183,12 +184,13 @@ with st.form("my_form"):
 
     if formato == 'Arquivo csv':
         
-        st.write("""O formato esperado do arquivo csv é de três colunas, com cabeçalhos. 
+        st.write("""O formato esperado do arquivo csv é de três colunas. 
                 A primeira coluna deve conter um nome ou identificador para cada ponto analisado, 
                 e a segunda e a terceira devem conter a latitude e a longitude (em graus decimais), respectivamente.""")
+        tem_header = st.checkbox('Meu arquivo tem uma primeira linha de cabeçalhos')    
         csv_file = st.file_uploader("Faça o upload de um arquivo csv:", type='csv')
         if csv_file:
-            gdf_bndes_periferias = cria_df_com_csv_latlon(csv_file)
+            gdf_bndes_periferias = cria_df_com_csv_latlon(csv_file, tem_header)
     
     submit = st.form_submit_button('Realizar análise')
 
