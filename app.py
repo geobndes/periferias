@@ -7,6 +7,9 @@ from shapely.geometry import Point
 from streamlit_folium import st_folium
 import numpy as np
 import pandas as pd
+import zipfile
+import tempfile
+import os
 
 # Carrega bases de dados relevantes
 
@@ -71,6 +74,42 @@ def cria_df_com_nome_endereco(nome_do_ponto, endereco):
     gdf_bndes_periferias = gdf_bndes_periferias.set_crs('epsg:4674')
     return gdf_bndes_periferias
 
+def cria_df_com_shp_zip(uploaded_zip_file):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Save the uploaded .zip
+        zip_path = os.path.join(tmpdir, "shapefile.zip")
+        with open(zip_path, "wb") as f:
+            f.write(uploaded_zip_file.read())
+        
+        # Extract the zip file
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
+            zip_ref.extractall(tmpdir)
+
+        # List of extracted files
+        extracted_files = os.listdir(tmpdir)
+        st.write("Arquivos extraídos: ", extracted_files)
+
+        # Find the base name
+        shp_files = [f for f in extracted_files if f.endswith('.shp')]
+        if not shp_files:
+            st.error("Nenhum arquivo .shp encontrado")
+        else:
+            basename = os.path.splitext(shp_files[0])[0]
+            required_exts = ['.shp', '.shx', '.dbf', '.prj']
+            missing_files = [f"{basename}{ext}" for ext in required_exts if f"{basename}{ext}" not in extracted_files]
+
+            if missing_files:
+                st.error(f"Faltando componentes obrigatórios do shapefile: {missing_files}")    
+            else: 
+                try:
+                    shp_path = os.path.join(tmpdir, f"{basename}.shp")
+                    gdf = gpd.read_file(shp_path)
+                    st.success("Shapefile lido com sucesso!")
+                    gdf['nome'] = gdf.index.to_series().apply(lambda x: f"Entrada {x+1}")
+                    return gdf
+                except Exception as e:
+                    st.error(f"Falha ao ler shapefile: {e}")
+
 def join_fcus_tipologia(gdf_bndes_periferias):
     # Interseção com tipologia urbanas
     gdf_bndes_periferias_tipologia = gdf_bndes_periferias.sjoin(tipologia,
@@ -104,26 +143,34 @@ def gera_resultado(gdf_bndes_periferias_tipologia_fcus):
     )
     return resultado
 
-def create_map(gdf_bndes_periferias_tipologia_fcus):
+def create_map(gdf_bndes_periferias_tipologia_fcus, geom_type='points'):
     # Plota tipologias
     tipologia_mapa = gdf_bndes_periferias_tipologia_fcus.set_geometry('tipologia_geometry').dropna(subset=['TipologiaI'])
-    m_tipologia = tipologia_mapa.explore('TipologiaI', tooltip=['TipologiaI', 'GaK'], name='Tipologia Intraurbana')
+    m_tipologia = tipologia_mapa.explore('TipologiaI', tooltip=['TipologiaI', 'GaK'], name='Tipologia Intraurbana', legend=False)
 
     # Plota fcus
     fcus_mapa = gdf_bndes_periferias_tipologia_fcus.set_geometry('fcus_geometry').dropna(subset=['nm_fcu'])
     m_fcus = fcus_mapa.explore(m=m_tipologia,
                                 color='red', tooltip=['nm_fcu'],
-                                name='Favelas e Comunidades Urbanas',
-                                legend_kwds={'position': 'topright'})
+                                name='Favelas e Comunidades Urbanas')
 
-    # Plota pontos
-    gdf_bndes_periferias_tipologia_fcus = gdf_bndes_periferias_tipologia_fcus.set_geometry('points_geometry')
-    m_pontos = gdf_bndes_periferias_tipologia_fcus.explore(m=m_fcus,
-                                                        color='green',
-                                                        marker_kwds={'radius': 5},
-                                                        style_kwds={'fillOpacity': 1},
-                                                        tooltip=['nome'],
-                                                        name='Pontos de interesse')
+    if geom_type == 'points':
+        # Plota pontos
+        gdf_bndes_periferias_tipologia_fcus = gdf_bndes_periferias_tipologia_fcus.set_geometry('points_geometry')
+        m_pontos = gdf_bndes_periferias_tipologia_fcus.explore(m=m_fcus,
+                                                            color='green',
+                                                            marker_kwds={'radius': 5},
+                                                            style_kwds={'fillOpacity': 1},
+                                                            tooltip=['nome'],
+                                                            name='Pontos de interesse')
+        
+    if geom_type == 'shapes':
+        # Plota pontos
+        gdf_bndes_periferias_tipologia_fcus = gdf_bndes_periferias_tipologia_fcus.set_geometry('geometry')
+        m_pontos = gdf_bndes_periferias_tipologia_fcus.explore(m=m_fcus,
+                                                            color='green',
+                                                            name='Shapes de interesse')
+
     
     # Add layer control
     folium.LayerControl().add_to(m_pontos)
@@ -144,11 +191,12 @@ st.markdown(
 nome_do_ponto = ''
 coordenadas = ''
 csv_file = ''
+uploaded_zip_file = ''
 latitude = 0.0
 longitude = 0.0
 endereco = ''
 
-formato = st.radio('Selecione o formato de entrada: ', ['Ponto Individual', 'Arquivo csv'])
+formato = st.radio('Selecione o formato de entrada: ', ['Ponto Individual', 'Arquivo csv', 'Shapefile'])
 
 if formato == 'Ponto Individual':
 
@@ -178,9 +226,7 @@ with st.form("my_form"):
             if latitude and longitude:
                 gdf_bndes_periferias = cria_df_com_nome_latlon(nome_do_ponto, latitude, longitude)
             if endereco:
-                gdf_bndes_periferias = cria_df_com_nome_endereco(nome_do_ponto, endereco)
-        
-            
+                gdf_bndes_periferias = cria_df_com_nome_endereco(nome_do_ponto, endereco)        
 
     if formato == 'Arquivo csv':
         
@@ -191,6 +237,15 @@ with st.form("my_form"):
         csv_file = st.file_uploader("Faça o upload de um arquivo csv:", type='csv')
         if csv_file:
             gdf_bndes_periferias = cria_df_com_csv_latlon(csv_file, tem_header)
+
+    if formato == 'Shapefile':
+
+        st.write("""Faça o upload de um zip com todos os arquivos componentes do shapefile. Os arquivos devem ter todos
+                 o mesmo nome, e são necessários, no mínimos, os arquivos de extensão .shp, .shx, .dbf e.prj.""")
+        uploaded_zip_file = st.file_uploader("Faça o upload de um arquivo zip:", type='zip')
+        if uploaded_zip_file:
+            gdf_bndes_periferias = cria_df_com_shp_zip(uploaded_zip_file)
+
     
     submit = st.form_submit_button('Realizar análise')
 
@@ -209,7 +264,23 @@ if (nome_do_ponto and (coordenadas or (latitude and latitude) or endereco)) or c
     st.dataframe(resultado)
         
     st.header("Mapa Interativo")
-    m = create_map(gdf_bndes_periferias_tipologia_fcus)
     st.write('🟢 Ponto Pesquisado')
     st.write('🟥 Favelas e Comunidades Urbanas')
+    m = create_map(gdf_bndes_periferias_tipologia_fcus, geom_type='points')
+    st_map = st_folium(m, width=700, height=500)
+
+elif uploaded_zip_file:
+    st.subheader('Dados recebidos')
+    dados_recebidos = gdf_bndes_periferias
+    st.write(dados_recebidos)
+    gdf_bndes_periferias_tipologia_fcus = join_fcus_tipologia(gdf_bndes_periferias)
+
+    st.header('Resultado do cruzamento')
+    resultado = gera_resultado(gdf_bndes_periferias_tipologia_fcus)
+    st.dataframe(resultado)
+
+    st.header("Mapa Interativo")
+    st.write('🟢 Ponto Pesquisado')
+    st.write('🟥 Favelas e Comunidades Urbanas')
+    m = create_map(gdf_bndes_periferias_tipologia_fcus, geom_type='shapes')
     st_map = st_folium(m, width=700, height=500)
