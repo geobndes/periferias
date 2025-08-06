@@ -87,7 +87,10 @@ def cria_df_com_shp_zip(uploaded_zip_file):
 
         # List of extracted files
         extracted_files = os.listdir(tmpdir)
-        st.write("Arquivos extraídos: ", extracted_files)
+        markdown_extracted_files = [f"- :blue-background[{f}]  " for f in extracted_files]
+        st.write("Arquivos extraídos: ")
+        for item in markdown_extracted_files:
+            st.markdown(item)
 
         # Find the base name
         shp_files = [f for f in extracted_files if f.endswith('.shp')]
@@ -128,6 +131,7 @@ def join_fcus_tipologia(gdf_bndes_periferias):
         gdf_bndes_periferias_tipologia_fcus['nm_fcu'].isnull(),
         'Não',
         'Sim')
+    gdf_bndes_periferias_tipologia_fcus = gdf_bndes_periferias_tipologia_fcus.reset_index()
     return gdf_bndes_periferias_tipologia_fcus
 
 def gera_resultado(gdf_bndes_periferias_tipologia_fcus):
