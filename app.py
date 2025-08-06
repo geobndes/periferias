@@ -29,6 +29,12 @@ def dms_to_point(dms):
     point = Point(lon_dd, lat_dd)
     return point
 
+def cria_df_com_dict(dict):
+    gdf_bndes_periferias = gpd.GeoDataFrame(dict)
+    gdf_bndes_periferias = gdf_bndes_periferias.set_geometry('points_geometry')
+    gdf_bndes_periferias = gdf_bndes_periferias.set_crs('epsg:4674')
+    return gdf_bndes_periferias
+
 def cria_df_com_nome_coord(nome_do_ponto, coordenadas):
     dados_bndes_periferias = {
         'nome': [nome_do_ponto],
@@ -150,7 +156,7 @@ def gera_resultado(gdf_bndes_periferias_tipologia_fcus):
 def create_map(gdf_bndes_periferias_tipologia_fcus, geom_type='points'):
     # Plota tipologias
     tipologia_mapa = gdf_bndes_periferias_tipologia_fcus.set_geometry('tipologia_geometry').dropna(subset=['TipologiaI'])
-    m_tipologia = tipologia_mapa.explore('TipologiaI', tooltip=['TipologiaI', 'GaK'], name='Tipologia Intraurbana', legend=False)
+    m_tipologia = tipologia_mapa.explore('TipologiaI', tooltip=['TipologiaI', 'GaK'], name='Tipologia Intraurbana', legend=True)
 
     # Plota fcus
     fcus_mapa = gdf_bndes_periferias_tipologia_fcus.set_geometry('fcus_geometry').dropna(subset=['nm_fcu'])
@@ -192,6 +198,7 @@ st.markdown(
     """
 )
 
+# Inicialização de variáveis de input
 nome_do_ponto = ''
 coordenadas = ''
 csv_file = ''
@@ -199,38 +206,53 @@ uploaded_zip_file = ''
 latitude = 0.0
 longitude = 0.0
 endereco = ''
+gdf_bndes_periferias = None
+input_data = {}
 
 formato = st.radio('Selecione o formato de entrada: ', ['Ponto Individual', 'Arquivo csv', 'Shapefile'])
 
 if formato == 'Ponto Individual':
 
+    if "input_count" not in st.session_state:
+        st.session_state.input_count = 1
+
     tipo_coord = st.radio('Qual tipo de coordenadas você deseja usar para os pontos?',
-            ['Graus, minutos e segundos (DMS)', 
-            'Graus decimais',
-            'Endereço'])
+            ['Graus decimais',
+             'Graus, minutos e segundos (DMS)'])
+    
+    if formato == 'Ponto Individual':
+        col_mais, col_menos, col_empty = st.columns([1,1, 1])
+        if col_mais.button("➕ Adicionar novo ponto"):
+            st.session_state.input_count += 1
+        if col_menos.button("❌ Remover ponto") and st.session_state.input_count > 1:
+            st.session_state.input_count -= 1
 
 with st.form("my_form"):    
 
     if formato == 'Ponto Individual':
-
-        nome_do_ponto = st.text_input(label = 'Insira o nome do ponto ponto a ser analisado:', placeholder='Local A')
-        if tipo_coord == 'Graus, minutos e segundos (DMS)':
-            coordenadas = st.text_input(label = """Coordenadas: (formato XX°XX'XX.X"S YY°YY'YY.Y"W)""", placeholder = """XX°XX'XX.X"S YY°YY'YY.Y"W""")
-        elif tipo_coord == 'Graus decimais':
-            latitude = st.number_input(label = 'Latitude', min_value=-90.0, max_value=90.0, format="%0.6f", placeholder=-22.908649345779487)
-            longitude = st.number_input(label = 'Longitude', min_value=-180.0, max_value=180.0, format="%0.6f", placeholder=-43.17958239890567)
-        elif tipo_coord == 'Endereço':
-            endereco = st.text_input(label = 'Endereço')
-
-        # Aqui começa o código para tratar o ponto colocado
-        if nome_do_ponto:
-            if coordenadas:
-                # Carrega dados inputados pelo usuário
-                gdf_bndes_periferias = cria_df_com_nome_coord(nome_do_ponto, coordenadas)
-            if latitude and longitude:
-                gdf_bndes_periferias = cria_df_com_nome_latlon(nome_do_ponto, latitude, longitude)
-            if endereco:
-                gdf_bndes_periferias = cria_df_com_nome_endereco(nome_do_ponto, endereco)        
+        input_data = {'nome': [], 'points_geometry': []}
+        for i in range(st.session_state.input_count):
+            col1, col2 = st.columns([1,2], vertical_alignment='bottom')
+            nome_do_ponto = col1.text_input(label = 'Nome do ponto:', placeholder='Local A', key=f"nome_{i}")
+            input_data['nome'].append(nome_do_ponto)
+            if tipo_coord == 'Graus, minutos e segundos (DMS)':
+                coordenadas = col2.text_input(label = """Coordenadas: (formato XX°XX'XX.X"S YY°YY'YY.Y"W)""", 
+                                              placeholder = """XX°XX'XX.X"S YY°YY'YY.Y"W""",
+                                              key = f"coord_dms_{i}")
+                if coordenadas:
+                    try:
+                        input_data['points_geometry'].append(dms_to_point(coordenadas))
+                    except Exception as e:
+                        st.error(f"Falha ao tratar as coordenadas fornecidas. Verifique o formato da entrada. Erro: {e}")
+            elif tipo_coord == 'Graus decimais':
+                col21, col22 = col2.columns([1,1], vertical_alignment='bottom')
+                latitude = col21.number_input(label = 'Latitude', min_value=-90.0, max_value=90.0, format="%0.6f", 
+                                              placeholder=-22.908649345779487,
+                                              key = f"latitude_{i}")
+                longitude = col22.number_input(label = 'Longitude', min_value=-180.0, max_value=180.0, format="%0.6f", 
+                                               placeholder=-43.17958239890567,
+                                               key = f"longitude_{i}")
+                input_data['points_geometry'].append(Point(longitude, latitude))
 
     if formato == 'Arquivo csv':
         
@@ -250,11 +272,12 @@ with st.form("my_form"):
         if uploaded_zip_file:
             gdf_bndes_periferias = cria_df_com_shp_zip(uploaded_zip_file)
 
-    
     submit = st.form_submit_button('Realizar análise')
 
 
 if (nome_do_ponto and (coordenadas or (latitude and latitude) or endereco)) or csv_file:
+    if (nome_do_ponto and (coordenadas or (latitude and latitude) or endereco)):
+        gdf_bndes_periferias = cria_df_com_dict(input_data)
     st.subheader('Dados recebidos')
     dados_recebidos = gdf_bndes_periferias[['nome', 'points_geometry']]
     dados_recebidos['latitude'] = gdf_bndes_periferias['points_geometry'].map(lambda p: p.y)
