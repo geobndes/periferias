@@ -238,7 +238,7 @@ with st.form("my_form"):
 
     if formato == 'Shapefile':
 
-        st.write("""Faça o upload de um zip com todos os arquivos componentes do shapefile. Os arquivos devem ter todos
+        st.write("""Faça o upload de um ou mais zips com todos os arquivos componentes de um shapefile. Os arquivos dentro de cada zip devem ter todos
                  o mesmo nome, e são necessários, no mínimos, os arquivos de extensão .shp, .shx, .dbf e.prj.""")
         uploaded_zip_files = st.file_uploader("Faça o upload de um arquivo zip:", type='zip', accept_multiple_files=True)
 
