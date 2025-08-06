@@ -35,27 +35,6 @@ def cria_df_com_dict(dict):
     gdf_bndes_periferias = gdf_bndes_periferias.set_crs('epsg:4674')
     return gdf_bndes_periferias
 
-def cria_df_com_nome_coord(nome_do_ponto, coordenadas):
-    dados_bndes_periferias = {
-        'nome': [nome_do_ponto],
-        'coord_dms': [coordenadas]
-    }
-    gdf_bndes_periferias = gpd.GeoDataFrame(dados_bndes_periferias)
-    gdf_bndes_periferias['points_geometry'] = gdf_bndes_periferias['coord_dms'].map(dms_to_point)
-    gdf_bndes_periferias = gdf_bndes_periferias.set_geometry('points_geometry')
-    gdf_bndes_periferias = gdf_bndes_periferias.set_crs('epsg:4674')
-    return gdf_bndes_periferias
-
-def cria_df_com_nome_latlon(nome_do_ponto, latitude, longitude):
-    dados_bndes_periferias = {
-        'nome': [nome_do_ponto],
-        'points_geometry': [Point(longitude, latitude)]
-    }
-    gdf_bndes_periferias = gpd.GeoDataFrame(dados_bndes_periferias)
-    gdf_bndes_periferias = gdf_bndes_periferias.set_geometry('points_geometry')
-    gdf_bndes_periferias = gdf_bndes_periferias.set_crs('epsg:4674')
-    return gdf_bndes_periferias
-
 def cria_df_com_csv_latlon(csv_file, tem_header):
     header_option = 'infer' if tem_header else None
     gdf_bndes_periferias = pd.read_csv(csv_file, header=header_option)
@@ -66,19 +45,6 @@ def cria_df_com_csv_latlon(csv_file, tem_header):
     gdf_bndes_periferias = gdf_bndes_periferias.set_crs('epsg:4674')
     return gdf_bndes_periferias
 
-def cria_df_com_nome_endereco(nome_do_ponto, endereco):
-    geolocator = ArcGIS()
-    #st.write('trying to geocode')
-    location = geolocator.geocode(endereco)
-    #st.write('geocode ok!')
-    dados_bndes_periferias = {
-        'nome': [nome_do_ponto],
-        'points_geometry': [Point(location.longitude, location.latitude)]
-    }
-    gdf_bndes_periferias = gpd.GeoDataFrame(dados_bndes_periferias)
-    gdf_bndes_periferias = gdf_bndes_periferias.set_geometry('points_geometry')
-    gdf_bndes_periferias = gdf_bndes_periferias.set_crs('epsg:4674')
-    return gdf_bndes_periferias
 
 def cria_df_com_shp_zip(uploaded_zip_file):
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -147,11 +113,18 @@ def gera_resultado(gdf_bndes_periferias_tipologia_fcus):
                                         'TipologiaI': 'Tipologia Intraurbana',
                                         'GaK': 'GaK',
                                         'nm_fcu': 'Nome FCU'})
-    resultado = resultado.style.applymap(
+    return resultado
+
+def gera_resultado_com_geometria_shp(gdf_bndes_periferias_tipologia_fcus):
+    resultado = gdf_bndes_periferias_tipologia_fcus[['nome', 'geometry', 'tipologia_geometry', 'fcus_geometry', 'NM_MUNICIP', 'TipologiaI', 'GaK', 'nm_fcu', 'FCU']]
+    return resultado
+
+def style_resultado(df):
+    df = df.style.applymap(
         lambda v: 'color: red' if v == 'Não' else 'color: green',
         subset=["GaK", "FCU"]
     )
-    return resultado
+    return df
 
 def create_map(gdf_bndes_periferias_tipologia_fcus, geom_type='points'):
     # Plota tipologias
@@ -202,7 +175,7 @@ st.markdown(
 nome_do_ponto = ''
 coordenadas = ''
 csv_file = ''
-uploaded_zip_file = ''
+uploaded_zip_files = []
 latitude = 0.0
 longitude = 0.0
 endereco = ''
@@ -261,16 +234,13 @@ with st.form("my_form"):
                 e a segunda e a terceira devem conter a latitude e a longitude (em graus decimais), respectivamente.""")
         tem_header = st.checkbox('Meu arquivo tem uma primeira linha de cabeçalhos')    
         csv_file = st.file_uploader("Faça o upload de um arquivo csv:", type='csv')
-        if csv_file:
-            gdf_bndes_periferias = cria_df_com_csv_latlon(csv_file, tem_header)
+        
 
     if formato == 'Shapefile':
 
         st.write("""Faça o upload de um zip com todos os arquivos componentes do shapefile. Os arquivos devem ter todos
                  o mesmo nome, e são necessários, no mínimos, os arquivos de extensão .shp, .shx, .dbf e.prj.""")
-        uploaded_zip_file = st.file_uploader("Faça o upload de um arquivo zip:", type='zip')
-        if uploaded_zip_file:
-            gdf_bndes_periferias = cria_df_com_shp_zip(uploaded_zip_file)
+        uploaded_zip_files = st.file_uploader("Faça o upload de um arquivo zip:", type='zip', accept_multiple_files=True)
 
     submit = st.form_submit_button('Realizar análise')
 
@@ -278,6 +248,8 @@ with st.form("my_form"):
 if (nome_do_ponto and (coordenadas or (latitude and latitude) or endereco)) or csv_file:
     if (nome_do_ponto and (coordenadas or (latitude and latitude) or endereco)):
         gdf_bndes_periferias = cria_df_com_dict(input_data)
+    if csv_file:
+            gdf_bndes_periferias = cria_df_com_csv_latlon(csv_file, tem_header)
     st.subheader('Dados recebidos')
     dados_recebidos = gdf_bndes_periferias[['nome', 'points_geometry']]
     dados_recebidos['latitude'] = gdf_bndes_periferias['points_geometry'].map(lambda p: p.y)
@@ -288,7 +260,7 @@ if (nome_do_ponto and (coordenadas or (latitude and latitude) or endereco)) or c
     
     st.header('Resultado do cruzamento')
     resultado = gera_resultado(gdf_bndes_periferias_tipologia_fcus)
-    st.dataframe(resultado)
+    st.dataframe(style_resultado(resultado))
         
     st.header("Mapa Interativo")
     st.write('🟢 Ponto Pesquisado')
@@ -296,18 +268,26 @@ if (nome_do_ponto and (coordenadas or (latitude and latitude) or endereco)) or c
     m = create_map(gdf_bndes_periferias_tipologia_fcus, geom_type='points')
     st_map = st_folium(m, width=700, height=500)
 
-elif uploaded_zip_file:
+elif uploaded_zip_files:
+    gdf_bndes_periferias_list = [] # list of geodataframes
+    for zip_file in uploaded_zip_files:
+        gdf_bndes_periferias_list.append(cria_df_com_shp_zip(zip_file))
     st.subheader('Dados recebidos')
-    dados_recebidos = gdf_bndes_periferias
-    st.write(dados_recebidos)
-    gdf_bndes_periferias_tipologia_fcus = join_fcus_tipologia(gdf_bndes_periferias)
-
+    resultados = [] # list of dataframes
+    resultados_mapa = []
+    for gdf in gdf_bndes_periferias_list:
+        dados_recebidos = gdf
+        st.write(dados_recebidos)   
+        gdf_bndes_periferias_tipologia_fcus = join_fcus_tipologia(gdf)
+        resultados.append(gera_resultado(gdf_bndes_periferias_tipologia_fcus))
+        resultados_mapa.append(gera_resultado_com_geometria_shp(gdf_bndes_periferias_tipologia_fcus))
     st.header('Resultado do cruzamento')
-    resultado = gera_resultado(gdf_bndes_periferias_tipologia_fcus)
-    st.dataframe(resultado)
+    resultado = pd.concat(resultados, ignore_index=True)
+    st.dataframe(style_resultado(resultado))
 
     st.header("Mapa Interativo")
     st.write('🟢 Ponto Pesquisado')
     st.write('🟥 Favelas e Comunidades Urbanas')
-    m = create_map(gdf_bndes_periferias_tipologia_fcus, geom_type='shapes')
+    resultado_mapa = gpd.GeoDataFrame(pd.concat(resultados_mapa, ignore_index=True), crs=resultados_mapa[0].crs)
+    m = create_map(resultado_mapa, geom_type='shapes')
     st_map = st_folium(m, width=700, height=500)
