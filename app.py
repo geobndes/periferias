@@ -30,6 +30,7 @@ def dms_to_point(dms):
     return point
 
 def cria_df_com_dict(dict):
+    # O dict esperado dois pares chave-valor: um com nomes para os pontos e outros com shapely Points
     gdf_bndes_periferias = gpd.GeoDataFrame(dict)
     gdf_bndes_periferias = gdf_bndes_periferias.set_geometry('points_geometry')
     gdf_bndes_periferias = gdf_bndes_periferias.set_crs('epsg:4674')
@@ -44,7 +45,6 @@ def cria_df_com_csv_latlon(csv_file, tem_header):
     gdf_bndes_periferias = gdf_bndes_periferias.set_geometry('points_geometry')
     gdf_bndes_periferias = gdf_bndes_periferias.set_crs('epsg:4674')
     return gdf_bndes_periferias
-
 
 def cria_df_com_shp_zip(uploaded_zip_file):
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -126,21 +126,26 @@ def style_resultado(df):
     )
     return df
 
-def create_map(gdf_bndes_periferias_tipologia_fcus, geom_type='points'):
+def create_map(gdf, geom_type='points'):
+    # Espera que o gfd tenha certas colunas. Mudar para lógica com variáveis
+    
+    bounds = gdf.total_bounds  # [minx, miny, maxx, maxy]
+    sw = [bounds[1], bounds[0]]
+    ne = [bounds[3], bounds[2]]
     # Plota tipologias
-    tipologia_mapa = gdf_bndes_periferias_tipologia_fcus.set_geometry('tipologia_geometry').dropna(subset=['TipologiaI'])
+    tipologia_mapa = gdf.set_geometry('tipologia_geometry').dropna(subset=['TipologiaI'])
     m_tipologia = tipologia_mapa.explore('TipologiaI', tooltip=['TipologiaI', 'GaK'], name='Tipologia Intraurbana', legend=True)
 
     # Plota fcus
-    fcus_mapa = gdf_bndes_periferias_tipologia_fcus.set_geometry('fcus_geometry').dropna(subset=['nm_fcu'])
+    fcus_mapa = gdf.set_geometry('fcus_geometry').dropna(subset=['nm_fcu'])
     m_fcus = fcus_mapa.explore(m=m_tipologia,
                                 color='red', tooltip=['nm_fcu'],
                                 name='Favelas e Comunidades Urbanas')
 
     if geom_type == 'points':
         # Plota pontos
-        gdf_bndes_periferias_tipologia_fcus = gdf_bndes_periferias_tipologia_fcus.set_geometry('points_geometry')
-        m_pontos = gdf_bndes_periferias_tipologia_fcus.explore(m=m_fcus,
+        gdf = gdf.set_geometry('points_geometry')
+        m_pontos = gdf.explore(m=m_fcus,
                                                             color='green',
                                                             marker_kwds={'radius': 5},
                                                             style_kwds={'fillOpacity': 1},
@@ -149,14 +154,15 @@ def create_map(gdf_bndes_periferias_tipologia_fcus, geom_type='points'):
         
     if geom_type == 'shapes':
         # Plota pontos
-        gdf_bndes_periferias_tipologia_fcus = gdf_bndes_periferias_tipologia_fcus.set_geometry('geometry')
-        m_pontos = gdf_bndes_periferias_tipologia_fcus.explore(m=m_fcus,
+        gdf = gdf.set_geometry('geometry')
+        m_pontos = gdf.explore(m=m_fcus,
                                                             color='green',
                                                             name='Shapes de interesse')
 
     
     # Add layer control
     folium.LayerControl().add_to(m_pontos)
+    m_pontos.fit_bounds([sw, ne])
     return m_pontos    
 
 # --------------------------------------------------------------------------
